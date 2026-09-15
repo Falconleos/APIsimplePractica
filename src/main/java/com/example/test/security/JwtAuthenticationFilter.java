@@ -59,4 +59,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
         filterChain.doFilter(request, response);
     }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
+        // Esto evita que el filtro analice tokens cuando el usuario intenta loguearse o registrarse
+        String path = request.getRequestURI();
+        return path.startsWith("/api/auth/");
+    }
 }

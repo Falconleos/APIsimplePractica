@@ -1,64 +1,134 @@
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\.mvn\wrapper\maven-wrapper.properties
-=========================================
+﻿
+
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\.mvn\wrapper\maven-wrapper.properties ---
+
 wrapperVersion=3.3.4
 distributionType=only-script
 distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.16/apache-maven-3.9.16-bin.zip
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\config\ApplicationConfig.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\config\DataInitializer.java
-=========================================
 package com.example.test.config;
 
-import com.example.test.model.Product;
-import com.example.test.model.User;
-import com.example.test.repository.ProductRepository;
 import com.example.test.repository.UserRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+@Configuration
+public class ApplicationConfig {
+
+    private final UserRepository userRepository;
+
+    public ApplicationConfig(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    @Bean
+    public UserDetailsService userDetailsService() {
+        return username -> userRepository.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("Usuario no encontrado"));
+    }
+
+    @Bean
+    public AuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+        authProvider.setUserDetailsService(userDetailsService());
+        authProvider.setPasswordEncoder(passwordEncoder());
+        return authProvider;
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+}
+
+
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\config\DataInitializerConfig.java ---
+
+package com.example.test.config;
+
+import com.example.test.model.User;
+import com.example.test.repository.UserRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 @Configuration
-public class DataInitializer {
-
-    @Autowired
-    private UserRepository userRepository;
-
-    @Autowired
-    private ProductRepository productRepository;
+public class DataInitializerConfig {
 
     @Bean
-    public CommandLineRunner initData() {
+    CommandLineRunner initUsers(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         return args -> {
-            // Creamos productos de prueba (Endpoint libre)
-            if (productRepository.count() == 0) {
-                productRepository.save(new Product(null, "Laptop Gamer", 1200.0));
-                productRepository.save(new Product(null, "Mouse Inalámbrico", 25.5));
-                productRepository.save(new Product(null, "Teclado Mecánico", 75.0));
+            if (userRepository.findByUsername("admin").isEmpty()) {
+                User user = new User();
+                user.setUsername("admin");
+                user.setPassword(passwordEncoder.encode("123456"));
+                user.setRole("ADMIN"); // O el campo que uses para roles/perfiles
+                userRepository.save(user);
+                System.out.println("Usuario administrador de prueba creado con Ã©xito.");
             }
-
-            // Creamos usuarios de prueba (Admin y User)
-            if (userRepository.count() == 0) {
-                User admin = new User(null, "admin", "1234", "ADMIN");
-                User normalUser = new User(null, "user", "1234", "USER");
-
-                userRepository.save(admin);
-                userRepository.save(normalUser);
-            }
-
-            System.out.println(">>> ¡Datos de prueba cargados en MySQL exitosamente! <<<");
         };
     }
 }
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\config\ProductDataInitializer.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\controller\AuthenticationController.java
-=========================================
+package com.example.test.config;
+
+import com.example.test.model.Product; // Ajusta el import segÃºn tu entidad
+import com.example.test.repository.ProductRepository;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class ProductDataInitializer {
+
+    @Bean
+    public CommandLineRunner initProducts(ProductRepository productRepository) {
+        return args -> {
+            // Solo inserta datos si la tabla estÃ¡ vacÃ­a para evitar duplicados
+            if (productRepository.count() == 0) {
+                // Nota: Ajusta los atributos (nombre, precio, etc.) segÃºn los campos de tu entidad Product
+                Product p1 = new Product();
+                p1.setName("Laptop Gamer");
+                p1.setPrice(1200.00);
+                // p1.setDescription("Laptop de alto rendimiento");
+
+                Product p2 = new Product();
+                p2.setName("Teclado MecÃ¡nico RGB");
+                p2.setPrice(75.50);
+                // p2.setDescription("Teclado mecÃ¡nico switches red");
+
+                productRepository.save(p1);
+                productRepository.save(p2);
+
+                System.out.println(">> Productos iniciales insertados en la base de datos.");
+            }
+        };
+    }
+}
+
+
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\controller\AuthenticationController.java ---
+
 package com.example.test.controller;
 
 import com.example.test.dto.AuthenticationRequest;
@@ -69,6 +139,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/auth")
+@CrossOrigin(origins = "http://localhost:4200")
 public class AuthenticationController {
 
     private final AuthenticationService authenticationService;
@@ -89,15 +160,14 @@ public class AuthenticationController {
 }
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\controller\ProductController.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\controller\ProductController.java
-=========================================
 package com.example.test.controller;
 
 import com.example.test.model.Product;
 import com.example.test.repository.ProductRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -106,27 +176,30 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/products")
+@CrossOrigin(origins = "http://localhost:4200")
 public class ProductController {
 
-    @Autowired
-    private ProductRepository productRepository;
+    private final ProductRepository productRepository;
+
+    public ProductController(ProductRepository productRepository) {
+        this.productRepository = productRepository;
+    }
 
     @GetMapping
-    public List<Product> getAllProducts() {
-        return productRepository.findAll();
+    public ResponseEntity<List<Product>> getAllProducts() {
+        return ResponseEntity.ok(productRepository.findAll());
     }
 }
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\controller\UserController.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\controller\UserController.java
-=========================================
 package com.example.test.controller;
 
 import com.example.test.model.User;
 import com.example.test.repository.UserRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -135,22 +208,24 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
+@CrossOrigin(origins = "http://localhost:4200")
 public class UserController {
 
-    @Autowired
-    private UserRepository userRepository;
+    private final UserRepository userRepository;
+
+    public UserController(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
 
     @GetMapping
-    public List<User> getAllUsers() {
-        return userRepository.findAll();
+    public ResponseEntity<List<User>> getAllUsers() {
+        return ResponseEntity.ok(userRepository.findAll());
     }
 }
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\dto\AuthenticationRequest.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\dto\AuthenticationRequest.java
-=========================================
 package com.example.test.dto;
 
 import lombok.AllArgsConstructor;
@@ -168,10 +243,8 @@ public class AuthenticationRequest {
 }
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\dto\RegisterRequest.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\dto\RegisterRequest.java
-=========================================
 package com.example.test.dto;
 
 import lombok.AllArgsConstructor;
@@ -190,10 +263,8 @@ public class RegisterRequest {
 }
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\model\Product.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\model\Product.java
-=========================================
 package com.example.test.model;
 
 import jakarta.persistence.*;
@@ -215,10 +286,8 @@ public class Product {
 }
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\model\User.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\model\User.java
-=========================================
 package com.example.test.model;
 
 import jakarta.persistence.*;
@@ -252,7 +321,7 @@ public class User implements UserDetails {
     @Column(nullable = false)
     private String role; // Guardaremos algo como "ADMIN" o "USER"
 
-    // Métodos de la interfaz UserDetails
+    // MÃ©todos de la interfaz UserDetails
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -292,10 +361,8 @@ public class User implements UserDetails {
 }
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\repository\ProductRepository.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\repository\ProductRepository.java
-=========================================
 package com.example.test.repository;
 
 import com.example.test.model.Product;
@@ -305,10 +372,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 }
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\repository\UserRepository.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\repository\UserRepository.java
-=========================================
 package com.example.test.repository;
 
 import com.example.test.model.User;
@@ -320,10 +385,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 }
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\security\JwtAuthenticationFilter.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\security\JwtAuthenticationFilter.java
-=========================================
 package com.example.test.security;
 
 import jakarta.servlet.FilterChain;
@@ -385,13 +448,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
         filterChain.doFilter(request, response);
     }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
+        // Esto evita que el filtro analice tokens cuando el usuario intenta loguearse o registrarse
+        String path = request.getRequestURI();
+        return path.startsWith("/api/auth/");
+    }
 }
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\security\JwtService.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\security\JwtService.java
-=========================================
 package com.example.test.security;
 
 import io.jsonwebtoken.Claims;
@@ -410,10 +478,10 @@ import java.util.function.Function;
 @Service
 public class JwtService {
 
-    // Clave secreta para firmar el token (en producción debe ser una cadena mucho más larga y estar en variables de entorno)
+    // Clave secreta para firmar el token (en producciÃ³n debe ser una cadena mucho mÃ¡s larga y estar en variables de entorno)
     private static final String SECRET_KEY = "tu_clave_secreta_muy_larga_y_segura_para_firmar_los_jwt_de_la_api";
 
-    // Tiempos de expiración (Ejemplo: Access Token de 15 minutos, Refresh Token de 7 días)
+    // Tiempos de expiraciÃ³n (Ejemplo: Access Token de 15 minutos, Refresh Token de 7 dÃ­as)
     private static final long ACCESS_TOKEN_VALIDITY = 1000 * 60 * 15;
     private static final long REFRESH_TOKEN_VALIDITY = 1000L * 60 * 60 * 24 * 7;
 
@@ -472,15 +540,14 @@ public class JwtService {
 }
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\security\SecurityConfig.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\security\SecurityConfig.java
-=========================================
 package com.example.test.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -504,9 +571,12 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
+                .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll() // Rutas públicas de autenticación
-                        .anyRequest().authenticated()                 // El resto requiere autenticación
+                        .requestMatchers("/api/auth/**").permitAll()         // Rutas pÃºblicas de autenticaciÃ³n
+                        .requestMatchers("/api/products/**").permitAll()     // Productos pÃºblicos para todos
+                        .requestMatchers("/api/users/**").hasRole("ADMIN")   // Solo usuarios con rol ADMIN
+                        .anyRequest().authenticated()                         // El resto requiere autenticaciÃ³n
                 )
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
@@ -519,10 +589,8 @@ public class SecurityConfig {
 }
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\service\AuthenticationService.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\service\AuthenticationService.java
-=========================================
 package com.example.test.service;
 
 import com.example.test.dto.AuthenticationRequest;
@@ -567,12 +635,20 @@ public class AuthenticationService {
     }
 
     public String authenticate(AuthenticationRequest request) {
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                        request.getUsername(),
-                        request.getPassword()
-                )
-        );
+        try {
+            System.out.println("Intentando autenticar usuario: " + request.getUsername());
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            request.getUsername(),
+                            request.getPassword()
+                    )
+            );
+        } catch (Exception e) {
+            System.out.println("Â¡Error de autenticaciÃ³n!: " + e.getMessage());
+            e.printStackTrace();
+            throw e;
+        }
+
         var user = userRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
 
@@ -581,10 +657,8 @@ public class AuthenticationService {
 }
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\TestApplication.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\java\com\example\test\TestApplication.java
-=========================================
 package com.example.test;
 
 import org.springframework.boot.SpringApplication;
@@ -600,30 +674,26 @@ public class TestApplication {
 }
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\resources\application.properties ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\main\resources\application.properties
-=========================================
-# Configuraci�n del servidor
+# Configuración del servidor
 server.port=8080
 
-# Conexi�n a la base de datos MySQL
-# Conexi�n a la base de datos MySQL
+# Conexión a la base de datos MySQL
+# Conexión a la base de datos MySQL
 spring.datasource.url=jdbc:mysql://localhost:3306/tu_base_de_datos?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
 spring.datasource.username=root
 spring.datasource.password=1234
 spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
 
-# Configuraci�n de JPA / Hibernate
+# Configuración de JPA / Hibernate
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect
 
 
+--- FILE: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\test\java\com\example\test\TestApplicationTests.java ---
 
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\src\test\java\com\example\test\TestApplicationTests.java
-=========================================
 package com.example.test;
 
 import org.junit.jupiter.api.Test;
@@ -637,96 +707,3 @@ class TestApplicationTests {
 	}
 
 }
-
-
-
-=========================================
-ARCHIVO: C:\Users\e_mar\Desktop\carpeta Leo\test\test\pom.xml
-=========================================
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.0</version>
-        <relativePath/> <!-- lookup parent from repository -->
-    </parent>
-    <groupId>com.example</groupId>
-    <artifactId>test</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
-    <name>test</name>
-    <description>Demo project for Spring Boot</description>
-    <properties>
-        <java.version>21</java.version>
-    </properties>
-    <dependencies>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-security</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>com.mysql</groupId>
-            <artifactId>mysql-connector-j</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <optional>true</optional>
-        </dependency>
-
-        <!-- JJWT (JSON Web Token) -->
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-api</artifactId>
-            <version>0.12.5</version>
-        </dependency>
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-impl</artifactId>
-            <version>0.12.5</version>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-jackson</artifactId>
-            <version>0.12.5</version>
-            <scope>runtime</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
-
-</project>
-
-
-
